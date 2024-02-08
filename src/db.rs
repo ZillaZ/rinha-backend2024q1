@@ -1,6 +1,8 @@
 use chrono::DateTime;
 use tokio_postgres::{tls::NoTls, *};
 use std::{collections::HashMap, env};
+use deadpool_postgres::{Config, Runtime};
+
 use crate::*;
 
 #[derive(Serialize, Deserialize)]
@@ -8,7 +10,7 @@ use crate::*;
 pub struct Answer {
     pub limite: i32,
     pub saldo: i32
-}
+}    
 
 #[derive(Serialize, Deserialize)]
 #[serde(crate="rocket::serde")]
@@ -16,7 +18,7 @@ pub struct Transacao {
     pub valor: i32,
     pub tipo: String,
     pub descricao: String
-}
+}    
 
 #[derive(Serialize, Deserialize)]
 #[serde(crate="rocket::serde")]
@@ -25,18 +27,26 @@ pub struct ITransacao {
     pub tipo: String,
     pub descricao: String,
     pub realizada_em: String
-}
+}    
 
-pub async fn connect() -> Client {
+pub async fn init_pool() -> Pool {
     let vars = env::vars().collect::<HashMap<String, String>>();
-    let connection_string= vars.get("DB_CONN").unwrap();
-    let (client, conn) = tokio_postgres::connect(connection_string, NoTls).await.unwrap();
-    rocket::tokio::spawn(async move {
-        if let Err(e) = conn.await {
-            panic!("muitosexo {}", e);
-        }
-    });
-    client
+    
+    let user = vars.get("POSTGRES_USER").unwrap();
+    let pass = vars.get("POSTGRES_PASSWORD").unwrap();
+    let db = vars.get("POSTGRES_DB").unwrap();
+    let host = vars.get("POSTGRES_HOST").unwrap();
+    let max = vars.get("POSTGRES_POOLSIZE").unwrap().parse::<usize>().unwrap();
+
+    let mut cfg = Config::new();
+    cfg.host = Some(host.clone());
+    cfg.dbname = Some(db.clone());
+    cfg.user = Some(user.clone());
+    cfg.password = Some(pass.clone());
+    cfg.pool = Some(deadpool_postgres::PoolConfig::new(max));
+
+    let pool = cfg.create_pool(Some(Runtime::Tokio1), NoTls).unwrap();
+    return pool  
 }
 
 pub async fn get_client(client: &Client, id: i32) -> Answer {
@@ -48,11 +58,6 @@ pub async fn get_client(client: &Client, id: i32) -> Answer {
     }
 }
 
-pub async fn client_exists(client: &Client, id: i32) -> bool {
-    let data = client.query(&format!("select * from clientes where id = {}", id), &[]).await.unwrap();    
-    data.len() > 0
-}
-
 pub async fn new_transaction(client: &Client, id: i32, data: Transacao) {
     let now = chrono::Utc::now();
     let statement = client.prepare("insert into transacoes values ($1, $2, $3, $4, $5);").await.unwrap();
@@ -60,7 +65,12 @@ pub async fn new_transaction(client: &Client, id: i32, data: Transacao) {
 }
 
 pub async fn update_client(dbclient: &Client, id: i32, data: &Transacao, client: &mut Answer) -> bool {
-    client.saldo -= data.valor;
+    if data.tipo == "c" {
+        client.saldo += data.valor;
+    }else {
+        client.saldo -= data.valor;
+    }
+
     if client.saldo < client.limite * -1 {
         return false
     }
@@ -71,6 +81,9 @@ pub async fn update_client(dbclient: &Client, id: i32, data: &Transacao, client:
 
 pub async fn get_transactions(client: &Client, id: i32) -> Vec<ITransacao> {
     let data = client.query(&format!("SELECT * FROM transacoes WHERE id_cliente = {} ORDER BY realizada_em DESC LIMIT 10;", id), &[]).await.unwrap();
+    if data.len() < 1 {
+        return Vec::new();
+    }
     let rtn : Vec<ITransacao> = data.iter().map(|x| {
         let aux : DateTime<chrono::Utc> = x.get(3);
         ITransacao {

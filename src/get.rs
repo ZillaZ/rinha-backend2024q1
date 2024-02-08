@@ -28,14 +28,16 @@ pub struct Extrato {
 }
 
 #[get("/clientes/<id>/extrato")]
-pub async fn extrato(id: i32) -> Result<status::Custom<Json<Extrato>>, Status> {
-    let dbclient = connect().await;
-    if !client_exists(&dbclient, id).await {
+pub async fn extrato(id: i32, pool: &State<Pool>) -> Result<status::Custom<Json<Extrato>>, Status> {
+    if id > 5 || id < 0 {
         return Err(Status::NotFound);
     }
+    
+    let dbclient = pool.get().await.unwrap();
     let transactions = get_transactions(&dbclient, id).await;
     let client = get_client(&dbclient, id).await;
     let now = chrono::Utc::now().to_rfc3339();
+   
     Ok(status::Custom(Status::Ok, Json(
         Extrato {
             saldo: Saldo {
