@@ -2,9 +2,7 @@ version: "3.5"
 
 services:
   api01: &api
-    # image: zanfranceschi/rinha-2024q1-crebito
-    privileged: true
-    build: .
+    image: lucasmula125/rinha-backend-2024
     hostname: api01
     environment:
       - POSTGRES_USER=postgres
@@ -21,7 +19,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.2"
+          cpus: "0.15"
           memory: "50mb"
 
   api02:
