@@ -6,7 +6,7 @@ use crate::*;
 pub async fn transacoes(id: i32, input: Json<Transacao>, pool: &State<Pool>) -> Result<status::Custom<Json<Answer>>, Status> {
     if id > 5 || id < 0 {
         return Err(Status::NotFound);
-    }else if input.valor < 0 || input.tipo != "c" && input.tipo != "d" || input.descricao.len() > 10 {
+    }else if input.descricao.len() < 1 || input.valor < 0 || input.tipo != "c" && input.tipo != "d" || input.descricao.len() > 10 {
         return Err(Status::UnprocessableEntity);
     }
 
@@ -17,7 +17,6 @@ pub async fn transacoes(id: i32, input: Json<Transacao>, pool: &State<Pool>) -> 
     if !success {
         return Err(Status::UnprocessableEntity);
     }
-    
-    new_transaction(&dbclient, id, input.0).await;
-    Ok(status::Custom(Status::Ok, Json(answer)))
+
+    Ok(status::Custom(Status::Ok, Json::from(answer)))
 }

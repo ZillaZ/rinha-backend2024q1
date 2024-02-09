@@ -38,7 +38,7 @@ pub async fn extrato(id: i32, pool: &State<Pool>) -> Result<status::Custom<Json<
     let client = get_client(&dbclient, id).await;
     let now = chrono::Utc::now().to_rfc3339();
    
-    Ok(status::Custom(Status::Ok, Json(
+    Ok(status::Custom(Status::Ok, Json::from(
         Extrato {
             saldo: Saldo {
                 total: client.saldo,

@@ -12,7 +12,15 @@ create table transacoes (
     valor int
 );
 
+create index clientes_index on clientes using hash(id);
 create index transacoes_index on transacoes using hash(id_cliente);
+
+create procedure update_client(i int, s int, t char, d varchar(10), r timestamp with time zone, v int)
+       language SQL
+       begin atomic
+       update clientes set saldo = s where id = i;
+       insert into transacoes values (i, t, d, r, v);
+       end;
 
 DO $$
 BEGIN

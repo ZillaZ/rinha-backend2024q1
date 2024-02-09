@@ -9,9 +9,8 @@ COPY Cargo.toml Cargo.lock ./
 RUN cargo fetch
 
 COPY src/ ./src/
+EXPOSE 8000
 
 RUN cargo build --release
-
-EXPOSE 8000
 
 CMD ./target/release/rinha-backend2024

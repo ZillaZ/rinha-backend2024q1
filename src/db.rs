@@ -5,7 +5,7 @@ use deadpool_postgres::{Config, Runtime};
 
 use crate::*;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(crate="rocket::serde")]
 pub struct Answer {
     pub limite: i32,
@@ -46,22 +46,18 @@ pub async fn init_pool() -> Pool {
     cfg.pool = Some(deadpool_postgres::PoolConfig::new(max));
 
     let pool = cfg.create_pool(Some(Runtime::Tokio1), NoTls).unwrap();
-    return pool  
+
+    return pool
 }
 
 pub async fn get_client(client: &Client, id: i32) -> Answer {
-    let data = client.query(&format!("select * from clientes where id = {}", id), &[]).await.unwrap();    
-    let row = data.get(0).unwrap();
+    let query = client.prepare("select * from clientes where id = ($1)").await.unwrap();
+    let row = client.query_one(&query, &[&id]).await.unwrap();
+
     Answer {
         limite: row.get(1),
         saldo: row.get(2)
     }
-}
-
-pub async fn new_transaction(client: &Client, id: i32, data: Transacao) {
-    let now = chrono::Utc::now();
-    let statement = client.prepare("insert into transacoes values ($1, $2, $3, $4, $5);").await.unwrap();
-    client.execute(&statement, &[&id, &data.tipo, &data.descricao, &now, &data.valor]).await.unwrap();
 }
 
 pub async fn update_client(dbclient: &Client, id: i32, data: &Transacao, client: &mut Answer) -> bool {
@@ -74,15 +70,17 @@ pub async fn update_client(dbclient: &Client, id: i32, data: &Transacao, client:
     if client.saldo < client.limite * -1 {
         return false
     }
-    let statement = dbclient.prepare("update clientes set saldo = ($1) where id = ($2)").await.unwrap();
-    dbclient.execute(&statement, &[&client.saldo, &id]).await.unwrap();
+    let now = chrono::Utc::now();
+    let statement = dbclient.prepare("call update_client($1, $2, $3, $4, $5, $6)").await.unwrap();
+    dbclient.execute(&statement, &[&id, &client.saldo, &data.tipo, &data.descricao, &now, &data.valor]).await.unwrap();
     true
 }
 
 pub async fn get_transactions(client: &Client, id: i32) -> Vec<ITransacao> {
-    let data = client.query(&format!("SELECT * FROM transacoes WHERE id_cliente = {} ORDER BY realizada_em DESC LIMIT 10;", id), &[]).await.unwrap();
+    let query  = client.prepare("SELECT * FROM transacoes WHERE id_cliente = ($1) ORDER BY realizada_em DESC LIMIT 10;").await.unwrap();
+    let data = client.query(&query, &[&id]).await.unwrap();
     if data.len() < 1 {
-        return Vec::new();
+        return Vec::with_capacity(0);
     }
     let rtn : Vec<ITransacao> = data.iter().map(|x| {
         let aux : DateTime<chrono::Utc> = x.get(3);

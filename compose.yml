@@ -3,6 +3,7 @@ version: "3.5"
 services:
   api01: &api
     # image: zanfranceschi/rinha-2024q1-crebito
+    privileged: true
     build: .
     hostname: api01
     environment:
@@ -11,13 +12,17 @@ services:
       - POSTGRES_DB=rinha
       - POSTGRES_HOST=db
       - PORT=5432
-      - POSTGRES_POOLSIZE=25
-      - ROCKET_KEEPALIVE=60
+      - POSTGRES_POOLSIZE=10
       - ROCKET_LIMITS={json="1024kib"}
     ports:
       - "3001:8000"
     depends_on:
       - db
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: "50mb"
 
   api02:
     <<: *api
@@ -34,6 +39,11 @@ services:
       - api02
     ports:
       - "9999:9999"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: "20mb"
 
   db:
     image: postgres:latest
@@ -46,6 +56,11 @@ services:
       - "5432:5432"
     volumes:
       - ./script.sql:/docker-entrypoint-initdb.d/script.sql
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: "430mb"
 
 networks:
   default:
