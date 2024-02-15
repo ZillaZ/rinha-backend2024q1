@@ -24,7 +24,7 @@ struct Transacao {
 #[serde(crate="rocket::serde")]
 pub struct Extrato {
     saldo: Saldo,
-    ultimas_transacoes: Vec<ITransacao>
+    ultimas_transacoes: Option<Vec<ITransacao>>
 }
 
 #[get("/clientes/<id>/extrato")]
@@ -35,17 +35,16 @@ pub async fn extrato(id: i32, pool: &State<Pool>) -> Result<status::Custom<Json<
     
     let dbclient = pool.get().await.unwrap();
     let transactions = get_transactions(&dbclient, id).await;
-    let client = get_client(&dbclient, id).await;
     let now = chrono::Utc::now().to_rfc3339();
-   
+
     Ok(status::Custom(Status::Ok, Json::from(
         Extrato {
             saldo: Saldo {
-                total: client.saldo,
-                limite: client.limite,
+                total: transactions.client.saldo,
+                limite: transactions.client.limite,
                 data_extrato: now
             },
-            ultimas_transacoes: transactions
+            ultimas_transacoes: transactions.transacoes
         }
     )))
 }

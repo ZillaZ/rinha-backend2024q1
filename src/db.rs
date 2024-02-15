@@ -27,7 +27,14 @@ pub struct ITransacao {
     pub tipo: String,
     pub descricao: String,
     pub realizada_em: String
-}    
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate="rocket::serde")]
+pub struct Wrapper {
+    pub client: Answer,
+    pub transacoes: Option<Vec<ITransacao>>
+}
 
 pub async fn init_pool() -> Pool {
     let vars = env::vars().collect::<HashMap<String, String>>();
@@ -50,46 +57,41 @@ pub async fn init_pool() -> Pool {
     return pool
 }
 
-pub async fn get_client(client: &Client, id: i32) -> Answer {
-    let query = client.prepare("select * from clientes where id = ($1)").await.unwrap();
-    let row = client.query_one(&query, &[&id]).await.unwrap();
+pub async fn update_client(client: &Client, input: &Json<Transacao>, id: i32) -> Answer {
+    let query = client.prepare("select * from update_client($1, $2, $3, $4, $5);").await.unwrap();
+    let now = chrono::Utc::now();
+    let val : i32 = match input.tipo.as_str() {
+        "c" => input.valor * -1,
+        _ => input.valor
+    };
+    let row = client.query_one(&query, &[&id, &val, &input.tipo, &input.descricao, &now]).await.unwrap();
 
     Answer {
-        limite: row.get(1),
-        saldo: row.get(2)
+        limite: row.get(0),
+        saldo: row.get(1)
     }
 }
 
-pub async fn update_client(dbclient: &Client, id: i32, data: &Transacao, client: &mut Answer) -> bool {
-    if data.tipo == "c" {
-        client.saldo += data.valor;
-    }else {
-        client.saldo -= data.valor;
-    }
-
-    if client.saldo < client.limite * -1 {
-        return false
-    }
-    let now = chrono::Utc::now();
-    let statement = dbclient.prepare("call update_client($1, $2, $3, $4, $5, $6)").await.unwrap();
-    dbclient.execute(&statement, &[&id, &client.saldo, &data.tipo, &data.descricao, &now, &data.valor]).await.unwrap();
-    true
-}
-
-pub async fn get_transactions(client: &Client, id: i32) -> Vec<ITransacao> {
-    let query  = client.prepare("SELECT * FROM transacoes WHERE id_cliente = ($1) ORDER BY realizada_em DESC LIMIT 10;").await.unwrap();
+pub async fn get_transactions(client: &Client, id: i32) -> Wrapper {
+    let query  = client.prepare("SELECT * FROM  get_client_and_transactions($1);").await.unwrap();
     let data = client.query(&query, &[&id]).await.unwrap();
-    if data.len() < 1 {
-        return Vec::with_capacity(0);
-    }
-    let rtn : Vec<ITransacao> = data.iter().map(|x| {
-        let aux : DateTime<chrono::Utc> = x.get(3);
-        ITransacao {
-            tipo: x.get(1),
-            descricao: x.get(2),
-            valor: x.get(4),
-            realizada_em: aux.to_rfc3339()
-        }
-    }).collect();
+    let rtn = Wrapper {
+        client: Answer {
+            limite: data[0].get::<usize, i32>(0),
+            saldo: data[0].get::<usize, i32>(1)
+        },
+        transacoes: data.iter().map(|x| {
+            if data[0].try_get::<usize, i32>(4).is_err() {
+                return None
+            }
+            Some(ITransacao {
+                tipo: x.get(2),
+                descricao: x.get(3),
+                valor: x.get(4),
+                realizada_em: x.get::<usize, DateTime<chrono::Utc>>(5).to_rfc3339()
+            })
+        }).collect()
+    };
+
     rtn
 }

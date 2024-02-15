@@ -2,7 +2,8 @@ version: "3.5"
 
 services:
   api01: &api
-    image: lucasmula125/rinha-backend-2024
+    #image: lucasmula125/rinha-backend-2024
+    build: .
     hostname: api01
     environment:
       - POSTGRES_USER=postgres
@@ -51,7 +52,7 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_DB=rinha
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - ./script.sql:/docker-entrypoint-initdb.d/script.sql
     deploy:
